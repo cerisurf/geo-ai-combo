@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dataStore>
+  <id>DataStoreInfoImpl-5e6f7g8h</id>
+  <name>shapefiles</name>
+  <description>European coastline shapefiles</description>
+  <enabled>true</enabled>
+  <workspace>
+    <id>WorkspaceInfoImpl-1a2b3c4d</id>
+  </workspace>
+  <connectionParameters>
+    <entry key="url">file:/opt/geoserver_data/shapefiles</entry>
+    <entry key="create spatial index">true</entry>
+    <entry key="charset">UTF-8</entry>
+    <entry key="memory mapped buffer">true</entry>
+    <entry key="enable spatial index">true</entry>
+  </connectionParameters>
+  <dateCreated>2024-01-01T00:00:00.000Z</dateCreated>
+  <dateModified>2024-01-01T00:00:00.000Z</dateModified>
+</dataStore>

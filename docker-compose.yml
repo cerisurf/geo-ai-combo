@@ -1,0 +1,169 @@
+# Docker Compose for EDR Publisher
+# No version field needed in modern Docker Compose
+
+services:
+  edr-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: edr-publisher-api
+    ports:
+      - "8080:8000"  # Changed to avoid conflict with Supabase Kong
+    volumes:
+      # Persistent data volume for Zarr stores
+      - edr_data:/app/data
+      # Mount source NetCDF files (optional for development)
+      - ./sig_wwave_swell-20240623.nc:/app/input/sig_wwave_swell-20240623.nc:ro
+    environment:
+      - EDR_HOST=0.0.0.0
+      - EDR_PORT=8000
+      - EDR_DATA_PATH=/app/data
+      - EDR_LOG_LEVEL=INFO
+      - EDR_RELOAD=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]  # Internal port stays 8000
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - edr-network
+
+  # Data converter service (run-once container for data preparation)
+  edr-converter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: edr-data-converter
+    volumes:
+      - edr_data:/app/data
+      - ./sig_wwave_swell-20240623.nc:/app/input/sig_wwave_swell-20240623.nc:ro
+    environment:
+      - EDR_DATA_PATH=/app/data
+    command: python scripts/convert_to_zarr.py /app/input/sig_wwave_swell-20240623.nc /app/data/wave_data.zarr
+    networks:
+      - edr-network
+    profiles:
+      - converter  # Only run when explicitly requested
+
+  # Redis cache (optional, for future caching implementation)
+  redis:
+    image: redis:7-alpine
+    container_name: edr-redis
+    ports:
+      - "6380:6379"  # Changed from default 6379 to avoid conflicts
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - edr-network
+    profiles:
+      - cache  # Only run when caching is needed
+
+  # GeoServer for OGC WMS/WFS services
+  geoserver:
+    image: kartoza/geoserver:2.25.3
+    container_name: edr-geoserver
+    ports:
+      - "8081:8080"  # GeoServer web interface and services
+    volumes:
+      # Persistent GeoServer data directory
+      - geoserver_data:/opt/geoserver/data_dir
+      # Mount our data directory so GeoServer can access both NetCDF and Zarr
+      - ./data:/opt/data:ro
+      # Custom GeoServer configuration
+      - ./docker/geoserver:/opt/geoserver_config:ro
+    environment:
+      - GEOSERVER_ADMIN_PASSWORD=geoserver123
+      - GEOSERVER_ADMIN_USER=admin
+      - INITIAL_MEMORY=1G
+      - MAXIMUM_MEMORY=2G
+      - STABLE_EXTENSIONS=vectortiles-plugin,wps-plugin,csw-plugin,feature-pregeneralized-plugin,pyramid-plugin
+      - COMMUNITY_EXTENSIONS=ogr-wfs-plugin,netcdf-plugin
+      - FORCE_REIMPORT=false
+      - SAMPLE_DATA=false
+    restart: unless-stopped
+    networks:
+      - edr-network
+    profiles:
+      - geoserver  # Only run when GeoServer is needed
+
+  # Data Pipeline Service - downloads and processes wave data
+  data-pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder  # Use the builder stage which has all dependencies
+    container_name: edr-data-pipeline
+    volumes:
+      # Mount data directory for output
+      - ./data:/app/data
+      # Mount scripts for pipeline execution
+      - ./scripts:/app/scripts
+    environment:
+      - PYTHONPATH=/app
+    working_dir: /app
+    networks:
+      - edr-network
+    profiles:
+      - pipeline  # Only run when needed
+    # Default command is sleep so container stays alive for exec commands
+    command: sleep infinity
+
+  # Frontend web application (Vue.js + Leaflet)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+    container_name: edr-frontend
+    ports:
+      - "3000:80"  # Frontend web interface
+    depends_on:
+      - edr-api
+    restart: unless-stopped
+    networks:
+      - edr-network
+    profiles:
+      - frontend  # Only run when frontend is needed
+
+  # Nginx reverse proxy (optional, for production deployment)
+  nginx:
+    image: nginx:alpine
+    container_name: edr-nginx
+    ports:
+      - "8090:80"   # Changed to avoid conflict with system ports
+      - "8443:443"  # Changed to avoid conflict with system ports
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - edr-api
+      - geoserver
+      - frontend
+    restart: unless-stopped
+    networks:
+      - edr-network
+    profiles:
+      - production  # Only run in production setup
+
+volumes:
+  edr_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data
+  redis_data:
+    driver: local
+  geoserver_data:
+    driver: local
+
+networks:
+  edr-network:
+    driver: bridge
+

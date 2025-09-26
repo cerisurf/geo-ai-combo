@@ -1,0 +1,44 @@
+{
+  "data_pipeline": {
+    "raw_data_dir": "./data/raw",
+    "zarr_data_dir": "./data",
+    "backup_dir": "./data/backup",
+    "compression_level": 3,
+    "time_chunks": 48,
+    "lat_chunks": 200,
+    "lon_chunks": 400,
+    "cleanup_old_files": true,
+    "cleanup_raw_files": true,
+    "days_to_keep": 7,
+    "backup_retention_days": 30,
+    "restart_service": true
+  },
+  "download_defaults": {
+    "method": "dods",
+    "hours": 120,
+    "region": null,
+    "variables": [
+      "htsgwsfc",
+      "perpwsfc", 
+      "dirpwsfc",
+      "wvhgtsfc",
+      "wvpersfc",
+      "wvdirsfc",
+      "swellsfc",
+      "swpersfc",
+      "swdirsfc"
+    ]
+  },
+  "regions": {
+    "global": null,
+    "north_atlantic": "35,75,-80,10",
+    "north_pacific": "20,70,140,240",
+    "european_waters": "40,70,-15,40",
+    "mediterranean": "30,47,-6,37",
+    "gulf_of_mexico": "18,31,-98,-80"
+  },
+  "edr_api": {
+    "collections_config_path": "./edr_publisher/config.json",
+    "restart_command": "docker-compose restart edr-api"
+  }
+}
